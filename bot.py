@@ -1,7 +1,7 @@
 import telebot
 from loguru import logger
 import api_requests
-from datetime import datetime, date, time, timedelta
+from datetime import date, timedelta
 from decouple import config
 from telebot import types
 from telegram_bot_calendar import DetailedTelegramCalendar
@@ -18,6 +18,7 @@ def start(message):
     user = users.User(chat_id)
     users.user_data[chat_id] = user
     logger.info(f'{chat_id} написал {message.text}')
+
 
     bot.send_message(chat_id, 'Привет! Чтобы посмотреть список доступных команд набери /help')
 
@@ -45,6 +46,8 @@ def low_price(message):
     user = users.User(chat_id)
     users.user_data[chat_id] = user
     user.current_command = '/lowprice'
+    user.check_in = date.today()
+    user.check_out = date.today() + timedelta(days=1)
     logger.info(f'{chat_id} написал {message.text}')
 
     msg = bot.send_message(chat_id, 'В каком городе ищем (кроме городов РФ)?')
@@ -58,6 +61,9 @@ def get_command(message):
     users.user_data[chat_id] = user
     user.sort = 'PRICE_HIGHEST_FIRST'
     user.current_command = '/highprice'
+    user.check_in = date.today()
+    user.check_out = date.today() + timedelta(days=1)
+
     logger.info(f'{chat_id} написал {message.text}')
 
     msg = bot.send_message(chat_id, 'В каком городе ищем (кроме городов РФ)?')
@@ -85,11 +91,11 @@ def get_history(message):
     logger.info(f'{chat_id} написал {message.text}')
 
     try:
-        with open(f'{chat_id}.txt', 'r', encoding='utf-8') as file:
+        with open(f'history/{chat_id}.txt', 'r', encoding='utf-8') as file:
             msg = ''
             for elem in file:
                 if '***' in elem:
-                    bot.send_message(chat_id, msg)
+                    bot.send_message(chat_id, msg, disable_web_page_preview=True)
                     msg = ''
                 else:
                     msg += elem
@@ -168,7 +174,7 @@ def call_back2(call):
 
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-        msg = bot.send_message(chat_id, 'Введите желаемую минимальную стоимость за сутки')
+        msg = bot.send_message(chat_id, 'Введите желаемую минимальную стоимость в рублях')
         bot.register_next_step_handler(msg, set_price_min_step)
 
 
@@ -183,7 +189,7 @@ def set_price_min_step(message):
     else:
         user.price_min = message.text
 
-        msg = bot.send_message(chat_id, 'Введите желаемую максимальную стоимость')
+        msg = bot.send_message(chat_id, 'Введите желаемую максимальную стоимость в рублях')
         bot.register_next_step_handler(msg, set_price_max_step)
 
 
@@ -198,19 +204,33 @@ def set_price_max_step(message):
     else:
         user.price_max = message.text
         msg = bot.send_message(chat_id, 'Введите желаемое минимальное расстояние до центра (в километрах)')
-        bot.register_next_step_handler(msg, set_distance_step)
+        bot.register_next_step_handler(msg, set_min_distance_step)
 
 
-def set_distance_step(message):
+def set_min_distance_step(message):
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
 
     if not message.text.isdigit():
         msg = bot.send_message(chat_id, 'Введите расстояние цифрами')
-        bot.register_next_step_handler(msg, set_distance_step)
+        bot.register_next_step_handler(msg, set_min_distance_step)
     else:
-        user.distance_from_center = message.text
+        user.min_distance_from_center = message.text
+        msg = bot.send_message(chat_id, 'Введите желаемое максимальное расстояние до центра (в километрах)')
+        bot.register_next_step_handler(msg, set_max_distance_step)
+
+
+def set_max_distance_step(message):
+    chat_id = message.chat.id
+    user = users.user_data[chat_id]
+    logger.info(f'{chat_id} написал {message.text}')
+
+    if not message.text.isdigit() or int(user.min_distance_from_center) > int(message.text):
+        msg = bot.send_message(chat_id, 'Введите расстояние больше указанной минимальной')
+        bot.register_next_step_handler(msg, set_max_distance_step)
+    else:
+        user.max_distance_from_center = message.text
 
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         markup.add('1', '3', '5')
@@ -267,8 +287,8 @@ def set_photo_num(message):
     else:
         user.photos_num = message.text
 
-        msg = bot.send_message(chat_id, 'Уже ищу!')
-        send_results(msg)
+        bot.send_message(chat_id, 'Уже ищу!')
+        send_results(message)
 
 
 @logger.catch
@@ -276,17 +296,24 @@ def send_results(message):
     chat_id = message.chat.id
     user = users.user_data[chat_id]
 
-    if user.check_in is None:
-        user.check_in = date.today()
-        user.check_out = date.today() + timedelta(days=1)
+    if user.current_command == '/bestdeal':
+        logger.info('Работает функция для /bestdeal')
 
-    if user.current_command == '/lowprice' or '/highprice':
+        user.hotels = api_requests.get_bestdeal_hotels(city_id=user.city_id, page_size=user.hotels_num,
+                                                       check_in=user.check_in, check_out=user.check_out,
+                                                       price_min=user.price_min, price_max=user.price_max,
+                                                       min_dist=user.min_distance_from_center,
+                                                       max_dist=user.max_distance_from_center)
+
+    elif user.current_command == '/lowprice' or '/highprice':
+        logger.info('Работает функция для /lowprice и /highprice')
+
         user.hotels = api_requests.get_hotels(city_id=user.city_id, page_size=user.hotels_num, check_in=user.check_in,
                                               check_out=user.check_out, sort=user.sort)
-    elif user.current_command == '/bestdeal':
-        user.hotels = api_requests.get_hotels(city_id=user.city_id, page_size=user.hotels_num, check_in=user.check_in,
-                                              check_out=user.check_out, sort=user.sort, price_min=user.price_min,
-                                              price_max=user.price_max)
+    if user.hotels is None:
+        logger.info(f' для {users.user_data[chat_id]} ничего не найдено')
+        bot.send_message(chat_id, 'По заданным параметрам не удалось ничего найти')
+
     if user.hotels:
         for i_key, i_value in user.hotels.items():
             if user.photos_num != 0:
@@ -295,12 +322,13 @@ def send_results(message):
             hotel_info = ''
             for j_key, j_value in i_value.items():
                 hotel_info += f'{j_key}: {j_value}\n'
-            bot.send_message(chat_id, hotel_info)
+            bot.send_message(chat_id, hotel_info, disable_web_page_preview=True)
             user.results += f'{hotel_info}\n'
 
             if user.photos_num != 0:
-                for i_photo in user.photos:
-                    bot.send_photo(chat_id, i_photo.format(size='y'))
+                # for i_photo in user.photos:
+                #     bot.send_photo(chat_id, i_photo)
+                bot.send_media_group(chat_id, user.photos)
 
         api_requests.history(user=chat_id, command=user.current_command, result=user.results)
         user.results = ''
