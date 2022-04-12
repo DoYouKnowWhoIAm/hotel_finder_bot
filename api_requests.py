@@ -7,6 +7,7 @@ from telebot import types
 from loguru import logger
 import re
 import os
+from typing import Dict, List, Union, Optional
 
 HEADERS = {
     'x-rapidapi-host': "hotels4.p.rapdapi.com",
@@ -15,26 +16,26 @@ HEADERS = {
 
 
 @logger.catch
-def request_api(url, querystring):
+def request_api(url: str, querystring: Dict[str, str]) -> Optional[Dict]:
     """
     Отправляет запрос на rapidapi.com
-    :param url:
+    :param url: url-адрес
     :param querystring: полученные параметры для запроса
     :return: результат запроса по переданным параметрам
     """
     response = requests.request('GET', url, headers=HEADERS, params=querystring, timeout=10)
     if response.status_code == 200:
-        data = json.loads(response.text)
-        logger.info(response.status_code)
+        if response.content is None:
+            return None
+        else:
+            data = json.loads(response.text)
+            logger.info(response.status_code)
 
-        return data
-
-    else:
-        return None
+            return data
 
 
 @logger.catch
-def get_city_id(location):
+def get_city_id(location: str) -> Union[str, None]:
     """
     Находит id города по названию
     :param location: название города
@@ -52,7 +53,7 @@ def get_city_id(location):
 
 
 @logger.catch()
-def get_hotels(city_id, page_size, check_in, check_out, sort):
+def get_hotels(city_id: str, page_size: str, check_in: str, check_out: str, sort: str) -> Dict:
     """
     Возвращает словарь отелей по заданным параметрам для команд
     /lowprice и /highprice.
@@ -91,7 +92,8 @@ def get_hotels(city_id, page_size, check_in, check_out, sort):
 
 
 @logger.catch()
-def get_bestdeal_hotels(city_id, page_size, check_in, check_out, price_min, price_max, min_dist, max_dist):
+def get_bestdeal_hotels(city_id: str, page_size: str, check_in: datetime, check_out: datetime, price_min: str,
+                        price_max: str, min_dist: str, max_dist: str) -> Optional[Dict]:
     """
     Возвращает словарь отелей по заданным параметрам для команды /bestdeal.
     :param city_id:
@@ -117,7 +119,6 @@ def get_bestdeal_hotels(city_id, page_size, check_in, check_out, price_min, pric
                    'sortOrder': 'PRICE_HIGHEST_FIRST',
                    'locale': 'ru_RU',
                    'currency': 'RUB'}
-    start = datetime.now()
     now = time.time()
     time_out = 15
     while True:
@@ -144,7 +145,7 @@ def get_bestdeal_hotels(city_id, page_size, check_in, check_out, price_min, pric
 
 
 @logger.catch()
-def get_photos(hotel_id, page_size):
+def get_photos(hotel_id: str, page_size: str) -> Optional[List[types.InputMediaPhoto]]:
     """
     Возвращает список url для фото к выбранным отелям.
     :param hotel_id: id отеля.
@@ -154,19 +155,24 @@ def get_photos(hotel_id, page_size):
     url = 'https://hotels4.p.rapidapi.com/properties/get-hotel-photos'
     querystring = {'id': hotel_id}
     data = request_api(url, querystring)
-    photos_list = []
-    count = 0
-    for i_key in data['hotelImages']:
-        if count == int(page_size):
-            break
-        count += 1
-        photos_list.append(types.InputMediaPhoto(i_key['baseUrl'].format(size='y')))
-    print(photos_list)
-    return photos_list
+
+    if data is None:
+        return None
+
+    else:
+        photos_list = []
+        count = 0
+        for i_key in data['hotelImages']:
+            if count == int(page_size):
+                break
+            count += 1
+            photos_list.append(types.InputMediaPhoto(i_key['baseUrl'].format(size='y')))
+        print(photos_list)
+        return photos_list
 
 
 @logger.catch()
-def history(user, command, result):
+def history(user: int, command: str, result: str) -> None:
     """
     Сохранение команды, текущего времени и полученного результата в файл.
     :param user: id пользователя, имя файла для истории пользователя.

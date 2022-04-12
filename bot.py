@@ -13,18 +13,17 @@ logger.add('logs.log', format='{time} {level} {message}')
 
 
 @bot.message_handler(commands=['start'])
-def start(message):
+def start(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
     logger.info(f'{chat_id} написал {message.text}')
 
-
     bot.send_message(chat_id, 'Привет! Чтобы посмотреть список доступных команд набери /help')
 
 
 @bot.message_handler(commands=['help'])
-def get_help(message):
+def get_help(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
@@ -41,13 +40,12 @@ def get_help(message):
 
 
 @bot.message_handler(commands=['lowprice'])
-def low_price(message):
+def low_price(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
     user.current_command = '/lowprice'
-    user.check_in = date.today()
-    user.check_out = date.today() + timedelta(days=1)
+
     logger.info(f'{chat_id} написал {message.text}')
 
     msg = bot.send_message(chat_id, 'В каком городе ищем (кроме городов РФ)?')
@@ -55,14 +53,12 @@ def low_price(message):
 
 
 @bot.message_handler(commands=['highprice'])
-def get_command(message):
+def get_command(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
     user.sort = 'PRICE_HIGHEST_FIRST'
     user.current_command = '/highprice'
-    user.check_in = date.today()
-    user.check_out = date.today() + timedelta(days=1)
 
     logger.info(f'{chat_id} написал {message.text}')
 
@@ -71,7 +67,7 @@ def get_command(message):
 
 
 @bot.message_handler(commands='bestdeal')
-def get_command(message):
+def get_command(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
@@ -84,7 +80,7 @@ def get_command(message):
 
 
 @bot.message_handler(commands='history')
-def get_history(message):
+def get_history(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.User(chat_id)
     users.user_data[chat_id] = user
@@ -99,11 +95,14 @@ def get_history(message):
                     msg = ''
                 else:
                     msg += elem
+                    if len(msg) > 3800:
+                        bot.send_message(chat_id, msg, disable_web_page_preview=True)
+                        msg = ''
     except FileNotFoundError:
         bot.send_message(chat_id, 'История пуста')
 
 
-def set_city_step(message):
+def set_city_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -119,23 +118,17 @@ def set_city_step(message):
             bot.register_next_step_handler(msg, set_city_step)
 
         else:
-            if user.current_command == '/bestdeal':
-                set_check_in(message)
-            else:
-                markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-                markup.add('1', '3', '5')
-                msg = bot.send_message(chat_id, 'Сколько отелей показать?', reply_markup=markup)
-                bot.register_next_step_handler(msg, set_number_hotels_step)
+            set_check_in(message)
 
 
-def set_check_in(message):
+def set_check_in(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     calendar, step = DetailedTelegramCalendar(calendar_id=1, min_date=date.today(), locale='ru').build()
     bot.send_message(chat_id, 'выберите дату заезда', reply_markup=calendar)
 
 
-def set_check_out(message):
+def set_check_out(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     calendar, step = DetailedTelegramCalendar(calendar_id=2,
@@ -144,7 +137,7 @@ def set_check_out(message):
 
 
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func(calendar_id=1))
-def call_back1(call):
+def call_back1(call: types.CallbackQuery) -> None:
     chat_id = call.message.chat.id
     user = users.user_data[chat_id]
 
@@ -160,7 +153,7 @@ def call_back1(call):
 
 
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func(calendar_id=2))
-def call_back2(call):
+def call_back2(call: types.CallbackQuery) -> None:
     chat_id = call.message.chat.id
     user = users.user_data[chat_id]
     result, key, step = DetailedTelegramCalendar(calendar_id=2,
@@ -173,12 +166,17 @@ def call_back2(call):
         logger.info(f'{chat_id} написал {result}')
 
         bot.delete_message(call.message.chat.id, call.message.message_id)
+        if user.current_command == '/bestdeal':
+            msg = bot.send_message(chat_id, 'Введите желаемую минимальную стоимость в рублях')
+            bot.register_next_step_handler(msg, set_price_min_step)
+        else:
+            markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+            markup.add('1', '3', '5')
+            msg = bot.send_message(chat_id, 'Сколько отелей показать?', reply_markup=markup)
+            bot.register_next_step_handler(msg, set_number_hotels_step)
 
-        msg = bot.send_message(chat_id, 'Введите желаемую минимальную стоимость в рублях')
-        bot.register_next_step_handler(msg, set_price_min_step)
 
-
-def set_price_min_step(message):
+def set_price_min_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -193,7 +191,7 @@ def set_price_min_step(message):
         bot.register_next_step_handler(msg, set_price_max_step)
 
 
-def set_price_max_step(message):
+def set_price_max_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -207,7 +205,7 @@ def set_price_max_step(message):
         bot.register_next_step_handler(msg, set_min_distance_step)
 
 
-def set_min_distance_step(message):
+def set_min_distance_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -221,7 +219,7 @@ def set_min_distance_step(message):
         bot.register_next_step_handler(msg, set_max_distance_step)
 
 
-def set_max_distance_step(message):
+def set_max_distance_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -238,7 +236,7 @@ def set_max_distance_step(message):
         bot.register_next_step_handler(msg, set_number_hotels_step)
 
 
-def set_number_hotels_step(message):
+def set_number_hotels_step(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -255,7 +253,7 @@ def set_number_hotels_step(message):
         bot.register_next_step_handler(msg, show_photo)
 
 
-def show_photo(message):
+def show_photo(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -276,7 +274,7 @@ def show_photo(message):
         bot.register_next_step_handler(msg, show_photo)
 
 
-def set_photo_num(message):
+def set_photo_num(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
     logger.info(f'{chat_id} написал {message.text}')
@@ -292,7 +290,7 @@ def set_photo_num(message):
 
 
 @logger.catch
-def send_results(message):
+def send_results(message: types.Message) -> None:
     chat_id = message.chat.id
     user = users.user_data[chat_id]
 
@@ -326,9 +324,10 @@ def send_results(message):
             user.results += f'{hotel_info}\n'
 
             if user.photos_num != 0:
-                # for i_photo in user.photos:
-                #     bot.send_photo(chat_id, i_photo)
-                bot.send_media_group(chat_id, user.photos)
+                if user.photos is None:
+                    bot.send_message(chat_id, 'Фотографии недоступны')
+                else:
+                    bot.send_media_group(chat_id, user.photos)
 
         api_requests.history(user=chat_id, command=user.current_command, result=user.results)
         user.results = ''
