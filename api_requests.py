@@ -1,16 +1,17 @@
+import requests
+import json
+import os
+import re
 import time
 from datetime import datetime
-import json
-import requests
+from typing import Dict, List, Union, Optional
+
 from decouple import config
 from telebot import types
 from loguru import logger
-import re
-import os
-from typing import Dict, List, Union, Optional
 
 HEADERS = {
-    'x-rapidapi-host': "hotels4.p.rapdapi.com",
+    'x-rapidapi-host': "hotels4.p.rapidapi.com",
     'x-rapidapi-key': config('KEY')
 }
 
@@ -25,13 +26,13 @@ def request_api(url: str, querystring: Dict[str, str]) -> Optional[Dict]:
     """
     response = requests.request('GET', url, headers=HEADERS, params=querystring, timeout=10)
     if response.status_code == 200:
-        if response.content is None:
-            return None
-        else:
+        try:
             data = json.loads(response.text)
             logger.info(response.status_code)
 
             return data
+        except json.decoder.JSONDecodeError:
+            return None
 
 
 @logger.catch
@@ -53,7 +54,12 @@ def get_city_id(location: str) -> Union[str, None]:
 
 
 @logger.catch()
-def get_hotels(city_id: str, page_size: str, check_in: str, check_out: str, sort: str) -> Dict:
+def get_hotels(city_id: str,
+               page_size: str,
+               check_in: str,
+               check_out: str,
+               sort: str
+               ) -> Dict:
     """
     Возвращает словарь отелей по заданным параметрам для команд
     /lowprice и /highprice.
@@ -74,7 +80,8 @@ def get_hotels(city_id: str, page_size: str, check_in: str, check_out: str, sort
                    'adults1': '1',
                    'sortOrder': sort,
                    'locale': 'ru_RU',
-                   'currency': 'RUB'}
+                   'currency': 'RUB'
+                   }
     data = request_api(url, querystring)
 
     for i_elem in data['data']['body']['searchResults']['results']:
@@ -92,8 +99,15 @@ def get_hotels(city_id: str, page_size: str, check_in: str, check_out: str, sort
 
 
 @logger.catch()
-def get_bestdeal_hotels(city_id: str, page_size: str, check_in: datetime, check_out: datetime, price_min: str,
-                        price_max: str, min_dist: str, max_dist: str) -> Optional[Dict]:
+def get_bestdeal_hotels(city_id: str,
+                        page_size: str,
+                        check_in: datetime,
+                        check_out: datetime,
+                        price_min: str,
+                        price_max: str,
+                        min_dist: str,
+                        max_dist: str
+                        ) -> Optional[Dict]:
     """
     Возвращает словарь отелей по заданным параметрам для команды /bestdeal.
     :param city_id:
@@ -118,7 +132,8 @@ def get_bestdeal_hotels(city_id: str, page_size: str, check_in: datetime, check_
                    "priceMax": price_max,
                    'sortOrder': 'PRICE_HIGHEST_FIRST',
                    'locale': 'ru_RU',
-                   'currency': 'RUB'}
+                   'currency': 'RUB'
+                   }
     now = time.time()
     time_out = 15
     while True:
@@ -167,7 +182,6 @@ def get_photos(hotel_id: str, page_size: str) -> Optional[List[types.InputMediaP
                 break
             count += 1
             photos_list.append(types.InputMediaPhoto(i_key['baseUrl'].format(size='y')))
-        print(photos_list)
         return photos_list
 
 

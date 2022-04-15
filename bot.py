@@ -1,10 +1,12 @@
-import telebot
-from loguru import logger
-import api_requests
 from datetime import date, timedelta
+
+import telebot
 from decouple import config
 from telebot import types
 from telegram_bot_calendar import DetailedTelegramCalendar
+from loguru import logger
+
+import api_requests
 import users
 
 TOKEN = config('TOKEN')
@@ -297,17 +299,23 @@ def send_results(message: types.Message) -> None:
     if user.current_command == '/bestdeal':
         logger.info('Работает функция для /bestdeal')
 
-        user.hotels = api_requests.get_bestdeal_hotels(city_id=user.city_id, page_size=user.hotels_num,
-                                                       check_in=user.check_in, check_out=user.check_out,
-                                                       price_min=user.price_min, price_max=user.price_max,
+        user.hotels = api_requests.get_bestdeal_hotels(city_id=user.city_id,
+                                                       page_size=user.hotels_num,
+                                                       check_in=user.check_in,
+                                                       check_out=user.check_out,
+                                                       price_min=user.price_min,
+                                                       price_max=user.price_max,
                                                        min_dist=user.min_distance_from_center,
                                                        max_dist=user.max_distance_from_center)
 
     elif user.current_command == '/lowprice' or '/highprice':
         logger.info('Работает функция для /lowprice и /highprice')
 
-        user.hotels = api_requests.get_hotels(city_id=user.city_id, page_size=user.hotels_num, check_in=user.check_in,
-                                              check_out=user.check_out, sort=user.sort)
+        user.hotels = api_requests.get_hotels(city_id=user.city_id,
+                                              page_size=user.hotels_num,
+                                              check_in=user.check_in,
+                                              check_out=user.check_out,
+                                              sort=user.sort)
     if user.hotels is None:
         logger.info(f' для {users.user_data[chat_id]} ничего не найдено')
         bot.send_message(chat_id, 'По заданным параметрам не удалось ничего найти')
